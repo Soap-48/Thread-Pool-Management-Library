@@ -23,7 +23,6 @@ void queue::push(task *t) {
         pthread_cond_signal(&q_cond);
         pthread_mutex_unlock(&q_lock);
     }
-    // cond var code
 }
 
 task *queue::pop() {
