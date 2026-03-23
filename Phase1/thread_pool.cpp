@@ -37,7 +37,7 @@ void thread_pool::submit(void (*fptr)(void *),void *arg){
     //gives w which the id of worker to use
     //for now we use a round robin like thingy
     static int w=0;
-    // w=(next+1)%w;
+    w=(w+1)%num_workers;
     //make something better
 
     workers[w]->worker_queue.push(workers[w],t);
