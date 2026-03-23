@@ -3,6 +3,7 @@
 #include <vector>
 #include <unistd.h>
 #include <pthread.h>
+#include <iostream> //for debug
 
 thread_pool::thread_pool(int n=sysconf(_SC_NPROCESSORS_ONLN)):stop(false){
     n=std::min(static_cast<long>(n),sysconf(_SC_NPROCESSORS_ONLN));
@@ -39,6 +40,14 @@ void thread_pool::submit(void (*fptr)(void *),void *arg){
     static int w=0;
     w=(w+1)%num_workers;
     //make something better
-
+    pthread_mutex_lock(&workers[w]->lock); // mutex locks used because other workers can access this queue during worker stealing
     workers[w]->worker_queue.push(workers[w],t);
+    pthread_cond_signal(&workers[w]->cond);
+    pthread_mutex_unlock(&workers[w]->lock);
+
+    //Debug
+    //std::cerr<<"Task Pushed\n";
+    //Debug
+
 }
+//task *t = w->worker_queue.pop(w); wtf this doing here??

@@ -2,7 +2,9 @@
 
 #include <pthread.h>
 #include "task.h"
-#include "worker.h"
+//#include "worker.h" cant include worker.h since worker class need queue class, circular dependency error
+
+class worker; //Forward declaration
 
 class queue{
     task *head;
@@ -14,6 +16,6 @@ class queue{
         queue();
         ~queue();
         void push(worker* w,task *t);
-        task* pop();
+        task* pop(worker* w);
         bool empty();
 };

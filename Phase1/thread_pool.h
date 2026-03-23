@@ -13,5 +13,4 @@ class thread_pool {
         thread_pool(int);
         ~thread_pool();
         void submit(void (*fptr)(void *),void *arg);
-
 };
