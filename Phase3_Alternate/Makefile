@@ -6,7 +6,7 @@ CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -O2
 TARGET = libthreadpool.a
 
 # Source files and object files
-SRCS = queue.cpp thread_pool.cpp worker.cpp rng.cpp
+SRCS = thread_pool.cpp worker.cpp rng.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 # Default target
@@ -17,7 +17,7 @@ $(TARGET): $(OBJS)
 	ar rcs $@ $^
 
 # Rule to compile source files into object files
-%.o: %.cpp queue.h task.h thread_pool.h worker.h rng.h
+%.o: %.cpp task.h thread_pool.h worker.h rng.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Clean up build files
