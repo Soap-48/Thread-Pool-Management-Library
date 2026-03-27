@@ -17,7 +17,7 @@ $(TARGET): $(OBJS)
 	ar rcs $@ $^
 
 # Rule to compile source files into object files
-%.o: %.cpp queue.h task.h thread_pool.h worker.h
+%.o: %.cpp queue.h task.h thread_pool.h worker.h rng.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # Clean up build files
