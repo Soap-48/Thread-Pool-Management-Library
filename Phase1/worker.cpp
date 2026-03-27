@@ -1,8 +1,8 @@
 #include "worker.h"
-#include <iostream> //debug
+
 worker::worker(int id, thread_pool *pool_ptr) : worker_id(id),
-                                                stop(false),
-                                                pool(pool_ptr)
+                                                pool(pool_ptr),
+                                                stop(false)
 
 {
     if (pthread_mutex_init(&lock, nullptr) != 0) {
@@ -23,11 +23,6 @@ worker::~worker() {
 
 void *worker::worker_loop(void *arg) {
     worker *w = (worker *)(arg);
-
-    //Debug
-    //std::cerr<<"Worker "<<((w)->worker_id)<<" is allive\n";
-    //Debug
-
     while (true) {
         pthread_mutex_lock(&w->lock);
         while (w->worker_queue.empty() && !w->stop) {
@@ -37,7 +32,7 @@ void *worker::worker_loop(void *arg) {
             pthread_mutex_unlock(&w->lock);
             break;
         }
-        task *t = w->worker_queue.pop(w);// Previosuly task *t = w->worker_queue.pop();
+        task *t = w->worker_queue.pop();// Previosuly task *t = w->worker_queue.pop();
         pthread_mutex_unlock(&w->lock);
         if (t) {
             t->f(t->arg);
