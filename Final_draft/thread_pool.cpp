@@ -3,11 +3,12 @@
 #include <vector>
 #include <unistd.h>
 #include <pthread.h>
+#include <atomic>
 #include <iostream>
 
 thread_pool::thread_pool(int n=sysconf(_SC_NPROCESSORS_ONLN)) : stop(false) {
-     if(n<=0||n>(static_cast<int>((_SC_NPROCESSORS_ONLN))))
-        n=(static_cast<int>((_SC_NPROCESSORS_ONLN)));
+     if(n<=0||n>(static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN))))
+        n=(static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN)));
     num_workers=n;
 
     workers.reserve(num_workers);
@@ -44,13 +45,13 @@ void thread_pool::submit(std::function<void()> task_func){
     // t->arg = arg; --> Removed! std::function carries its own state.
 
     // Load balancing (round robin)
-    static int w = 0;
-    w = (w + 1) % num_workers;
+    static std::atomic<int> w{0};
+    int target = w.fetch_add(1, std::memory_order_relaxed) % num_workers;
     
-    pthread_mutex_lock(&workers[w]->lock);
-    workers[w]->worker_queue.push_back(t);
-    pthread_cond_signal(&workers[w]->cond);
-    pthread_mutex_unlock(&workers[w]->lock);
+    pthread_mutex_lock(&workers[target]->lock);
+    workers[target]->worker_queue.push_back(t);
+    pthread_cond_signal(&workers[target]->cond);
+    pthread_mutex_unlock(&workers[target]->lock);
 }
 
 // purely testing function
@@ -60,7 +61,7 @@ void thread_pool::submit_n(std::function<void()> task_func, int id){
     t->prev=t->next = nullptr;
 
     pthread_mutex_lock(&workers[id]->lock); 
-    workers[id]->worker_queue.push_back(t);
+    workers.at(id)->worker_queue.push_back(t);
     pthread_cond_signal(&workers[id]->cond);
     pthread_mutex_unlock(&workers[id]->lock);
 }

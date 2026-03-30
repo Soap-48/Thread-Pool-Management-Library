@@ -1,7 +1,7 @@
 #include "thread_pool.h"
 #include "IO_Pool.h"
 
-IO_Pool::IO_Pool():num_threads(num_threads),pool_shutdown(false), Compute_pool(Compute_pool)
+IO_Pool::IO_Pool(int n, thread_pool *p):num_threads(n),pool_shutdown(false), Compute_pool(p)
 {
     if (pthread_mutex_init(&mutex, nullptr) != 0) {
         throw std::runtime_error("IOPool: Failed to initialize queue mutex.");
@@ -22,8 +22,8 @@ IO_Pool::~IO_Pool()
 {
     pthread_mutex_lock(&mutex);
     pool_shutdown = true;
+    pthread_cond_broadcast(&cond);
     pthread_mutex_unlock(&mutex);
-    pthread_cond_broadcast(&cond);//To tackle Thundering herd!
 
     for (pthread_t& thread : workers) {
         pthread_join(thread, nullptr);
@@ -55,24 +55,48 @@ void IO_Pool::worker_loop() {
             break; 
         }
         if (req->buffer && req->fd >= 0) {
-            req->buffer->resize(req->bytes_to_read);
-            ssize_t bytes_read = read(req->fd, req->buffer->data(), req->bytes_to_read);
-            
-            if (bytes_read > 0) {
-                req->buffer->resize(bytes_read); 
+            req->buffer->resize(req->bytes_to_io);
+            ssize_t bytes;
+            if(!(req->io_type))
+            bytes = read(req->fd, req->buffer->data(), req->bytes_to_io);
+            else
+            bytes = write(req->fd, req->buffer->data(), req->bytes_to_io);
+            if (bytes > 0) {
+                req->buffer->resize(bytes); 
             } 
             else {
-                req->buffer->clear(); 
+                req->buffer->clear();//
+                //
+                std::cerr<<"Failed Read/Write\n";
             }
         }
         if (req->callback) {
+            std::cerr<<"IO_POOL starting callback"<<std::endl;
             auto user_callback=std::move(req->callback);//Critical
             auto safe_buffer=req->buffer;
             Compute_pool->submit([user_callback,safe_buffer](){
                 user_callback(safe_buffer);
             });
+            std::cerr<<"IO_POOL callback returned"<<std::endl;
         }
         delete req;
         req=nullptr;
     }
+}
+void IO_Pool::submit(int fd, size_t bytes_to_io, bool io_type,
+    std::function<void(std::shared_ptr<std::vector<char>>)> callback,
+    bool is_shutdown_flag,
+    std::shared_ptr<std::vector<char>> buffer)
+{
+    IO_Request* io_task=new IO_Request;
+    io_task->fd=fd;
+    io_task->bytes_to_io=bytes_to_io;
+    io_task->io_type=io_type;
+    io_task->callback=callback;
+    io_task->is_shutdown_flag=is_shutdown_flag;
+    io_task->buffer=buffer;
+    pthread_mutex_lock(&mutex);
+    IO_tasks.push_back(io_task);
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
 }

@@ -29,10 +29,12 @@ private:
         return nullptr;
     }
 
-    void worker_loop();
-
 public:
-    IO_Pool();
+    IO_Pool(int n, thread_pool *p);
     ~IO_Pool();
     void worker_loop();
+    void submit(int fd, size_t bytes_to_io, bool io_type,
+    std::function<void(std::shared_ptr<std::vector<char>>)> callback,
+    bool is_shutdown_flag,
+    std::shared_ptr<std::vector<char>> buffer);
 };

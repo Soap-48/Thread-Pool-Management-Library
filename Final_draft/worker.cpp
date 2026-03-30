@@ -1,5 +1,3 @@
-#pragma once
-
 #include "worker.h"
 #include "rng.h"
 #include "task.h"
@@ -97,11 +95,11 @@ void* worker::worker_loop(void *arg) {
                     if (w->worker_queue.empty())
                         pthread_cond_timedwait(&w->cond, &w->lock, &ts);
                     pthread_mutex_unlock(&w->lock);
-                    ts.tv_nsec += 5000000;
-                    if (ts.tv_nsec >= 1000000000) {
-                        ts.tv_sec++;
-                        ts.tv_nsec -= 1000000000;
-                    }
+                    // ts.tv_nsec += 5000000;
+                    // if (ts.tv_nsec >= 1000000000) {
+                    //     ts.tv_sec++;
+                    //     ts.tv_nsec -= 1000000000;
+                    // }
                 }
 
                 pthread_mutex_lock(&w->lock);
