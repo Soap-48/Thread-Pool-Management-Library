@@ -11,11 +11,18 @@ worker::worker(int id, thread_pool *pool_ptr) : worker_id(id),
                                                 rng_o(std::random_device{}())
 
 {
-    if (pthread_mutex_init(&lock, nullptr) != 0) {
+    if (pthread_mutex_init(&lock1, nullptr) != 0) {
         throw std::runtime_error("Mutex init failed.\n");
     }
-    if (pthread_cond_init(&cond, nullptr)) {
-        pthread_mutex_destroy(&lock);
+    if (pthread_mutex_init(&lock2, nullptr) != 0) {
+        throw std::runtime_error("Mutex init failed.\n");
+    }
+    if (pthread_cond_init(&cond1, nullptr)) {
+        pthread_mutex_destroy(&lock1);
+        throw std::runtime_error("Cond i");
+    }
+    if (pthread_cond_init(&cond2, nullptr)) {
+        pthread_mutex_destroy(&lock2);
         throw std::runtime_error("Cond i");
     }
 }
@@ -25,8 +32,18 @@ void worker::start() {
 }
 
 worker::~worker() {
-    pthread_mutex_destroy(&lock);
-    pthread_cond_destroy(&cond);
+    pthread_mutex_destroy(&lock1);
+    pthread_mutex_destroy(&lock2);
+    pthread_cond_destroy(&cond1);
+    pthread_cond_destroy(&cond2);
+}
+
+void worker::execute_task(task *t) {
+    try {
+        t->f();
+    } catch (...) {
+        pool->push_exception(std::current_exception());
+    }
 }
 
 task *worker::steal() {
@@ -37,13 +54,29 @@ task *worker::steal() {
     for (int i = 0; i < num; i += 1) {
         int target = (rnd + i) % num;
         if (target != worker_id) {
-            pthread_mutex_lock(&pool->workers[target]->lock);
-            t = pool->workers[target]->worker_queue.pop_back();
-            pthread_mutex_unlock(&pool->workers[target]->lock);
+            pthread_mutex_lock(&pool->workers[target]->lock1);
+            t = pool->workers[target]->worker_queue1.pop_back();
+            pthread_mutex_unlock(&pool->workers[target]->lock1);
             if (t != nullptr) {
                 //
-                std::cerr << worker_id << " stole from " << target << std::endl;
+                std::cerr << worker_id << " stole from queue 1 of" << target << std::endl;
                 return t;
+            }
+        }
+    }
+    if(!t)
+    {
+        for (int i = 0; i < num; i += 1) {
+            int target = (rnd + i) % num;
+            if (target != worker_id) {
+                pthread_mutex_lock(&pool->workers[target]->lock2);
+                t = pool->workers[target]->worker_queue2.pop_back();
+                pthread_mutex_unlock(&pool->workers[target]->lock2);
+                if (t != nullptr) {
+                    //
+                    std::cerr << worker_id << " stole from queue 2 of " << target << std::endl;
+                    return t;
+                }
             }
         }
     }
@@ -51,87 +84,111 @@ task *worker::steal() {
 }
 
 void* worker::worker_loop(void *arg) {
-    worker *w = (worker *)arg;
-
-    while (!w->stop) {
-        task *t = nullptr;
-        pthread_mutex_lock(&w->lock); // graceful shutdown, this code runs when w->stop is set to 1 by pool
-
-        if (!w->worker_queue.empty()) {// Is this required?
-            t = w->worker_queue.pop_front();
-        }
-        pthread_mutex_unlock(&w->lock);
-        if (t != nullptr) {
-            t->f();
+    worker* w=(worker*) arg;
+    int cts_run=0;
+    while(!w->stop.load())
+    {
+        pthread_mutex_lock(&w->lock1);
+        task* t=w->worker_queue1.pop_front();
+        pthread_mutex_unlock(&w->lock1);
+        if(t&&cts_run<5)
+        {
+            w->execute_task(t);
             delete t;
             t=nullptr;
-        } else {
-            pthread_mutex_lock(&w->lock);
-            bool flag = w->worker_queue.empty();
-            pthread_mutex_unlock(&w->lock);
-            while (flag && !w->stop) {
-                // pthread_cond_wait(&w->cond, &w->lock);
-                t = w->steal();
-                if (t != nullptr) {
-                    t->f();
-                    delete t;
-                    t = nullptr;
-                } else {
-                    // struct timespec ts;
-                    // clock_gettime(CLOCK_REALTIME, &ts);
-                    // ts.tv_nsec += 5000000;
-                    // if (ts.tv_nsec >= 1000000000) {
-                    //     ts.tv_sec++;
-                    //     ts.tv_nsec -= 1000000000;
-                    // }
-                    struct timespec ts;
-                    clock_gettime(CLOCK_REALTIME, &ts);
-                    ts.tv_nsec += 5000000;
-                    if (ts.tv_nsec >= 1000000000) {
-                        ts.tv_sec++;
-                        ts.tv_nsec -= 1000000000;
-                    }
-                    pthread_mutex_lock(&w->lock);
-                    if (w->worker_queue.empty())
-                        pthread_cond_timedwait(&w->cond, &w->lock, &ts);
-                    pthread_mutex_unlock(&w->lock);
-                    // ts.tv_nsec += 5000000;
-                    // if (ts.tv_nsec >= 1000000000) {
-                    //     ts.tv_sec++;
-                    //     ts.tv_nsec -= 1000000000;
-                    // }
-                }
-
-                pthread_mutex_lock(&w->lock);
-                flag = w->worker_queue.empty();
-                pthread_mutex_unlock(&w->lock);
-            }
-            // pthread_mutex_unlock(&w->lock);
+            cts_run++;
+            continue;
         }
-    }
-    // graceful shutdown, this code runs when w->stop is set to 1 by pool
-    // std::cerr << "Worker " << w->worker_id << "exiting outer loop" << std::endl;
-    while (true) {
-        while (!w->worker_queue.empty()) {
-            pthread_mutex_lock(&w->lock); // do we really need mutex when we are exiting?? also benchamrk this
-            task *t = w->worker_queue.pop_front();
-
-            pthread_mutex_unlock(&w->lock);
-            if (t != nullptr) {
-                t->f();
+        pthread_mutex_lock(&w->lock2);
+        t=w->worker_queue2.pop_front();
+        pthread_mutex_unlock(&w->lock2);
+        if(t)
+        {
+            w->execute_task(t);
+            delete t;
+            t=nullptr;
+            cts_run=0;
+            continue;
+        }
+        pthread_mutex_lock(&w->lock1);
+        bool flag=w->worker_queue1.empty();
+        pthread_mutex_unlock(&w->lock1);
+        while(flag&&!w->stop.load())
+        {
+            t = w->steal();
+            if (t) {
+                w->execute_task(t);
                 delete t;
-                t=nullptr;
+                t = nullptr;
             }
+            else
+            {
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                ts.tv_nsec += 2000000;
+                if (ts.tv_nsec >= 1000000000) {
+                    ts.tv_sec++;
+                    ts.tv_nsec -= 1000000000;
+                }
+                pthread_mutex_lock(&w->lock1);
+                if (w->worker_queue1.empty())
+                    pthread_cond_timedwait(&w->cond1, &w->lock1, &ts);
+                pthread_mutex_unlock(&w->lock1);
+            }
+            pthread_mutex_lock(&w->lock1);
+            flag=w->worker_queue1.empty();
+            pthread_mutex_unlock(&w->lock1);
         }
-        task *t = w->steal();
-        if (t == nullptr)
-            break;
-        else {
-            t->f();
+        cts_run=0;
+    }
+    while (!w->worker_queue1.empty()) {
+        pthread_mutex_lock(&w->lock1);
+        task *t = w->worker_queue1.pop_front();
+        pthread_mutex_unlock(&w->lock1);
+        if (t != nullptr) {
+            w->execute_task(t);
             delete t;
             t=nullptr;
         }
     }
-    // std::cerr<<"Worker "<<w->worker_id<<"dying"<<std::endl;
+    while (!w->worker_queue2.empty()) {
+        pthread_mutex_lock(&w->lock2);
+        task *t = w->worker_queue2.pop_front();
+        pthread_mutex_unlock(&w->lock2);
+        if (t != nullptr) {
+            w->execute_task(t);
+            delete t;
+            t=nullptr;
+        }
+    }
+    while(true)
+    {
+        task* t= nullptr;
+        t=w->steal();
+        if(t)
+        {
+            w->execute_task(t);
+            delete t;
+            t=nullptr;
+        }
+        else
+        break;
+    }
     return nullptr;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

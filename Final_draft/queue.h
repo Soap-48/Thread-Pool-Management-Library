@@ -6,7 +6,7 @@ class worker; //Forward declaration
 
 class queue{
     task *head;
-    task *tail;
+    task* tail;
 
     public:
         int task_count;

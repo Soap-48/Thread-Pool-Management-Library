@@ -15,8 +15,9 @@ class worker{
         int worker_id;
         thread_pool *pool;
     
-        pthread_mutex_t lock;
-        pthread_cond_t cond;
+        pthread_mutex_t lock1,lock2;
+        pthread_cond_t cond1,cond2;
+
         bool stop;
         worker(int id, thread_pool* pool_ptr);
 

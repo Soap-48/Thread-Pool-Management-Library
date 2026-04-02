@@ -66,12 +66,12 @@ int main() {
     printf("--- Initializing Engine ---\n");
     printf("CPU Workers: %d | I/O Workers: %d\n", NUM_CPU_WORKERS, NUM_IO_WORKERS);
     
+    
+    auto overall_start = std::chrono::high_resolution_clock::now();
+    {
+    //CPU TASK
     thread_pool cpu_pool(NUM_CPU_WORKERS);
     IO_Pool io_pool(NUM_IO_WORKERS, &cpu_pool);
-
-    auto overall_start = std::chrono::high_resolution_clock::now();
-
-    //CPU TASK
     const int NUM_TASKS=1000;
     const int RANGE_PER_TASK=100000;
     std::vector<PrimeTaskData> tasks(NUM_TASKS);
@@ -83,7 +83,9 @@ int main() {
             std::function<void(void*)> func=calculate_primes;
             auto cop=tasks[i];
             std::function<void()> pp=[func,cop](){calculate_primes((void*)&cop);};
-            cpu_pool.submit(pp);
+            if(i%2==0) cpu_pool.submit(pp,priority::HIGH); 
+            else    cpu_pool.submit(pp,priority::LOW);
+            
         }
 
 
@@ -172,6 +174,7 @@ int main() {
         fflush(stdout);
         usleep(50000); 
     }
+}
     
     auto end_read = std::chrono::high_resolution_clock::now();
     
@@ -180,11 +183,11 @@ int main() {
         // CLEANUP
         // ==========================================
         
-        printf("\n\n[Phase 1 Complete] Write Time: %f seconds.\n", 
-           std::chrono::duration<double>(end_write - start_write).count());
+        // printf("\n\n[Phase 1 Complete] Write Time: %f seconds.\n", 
+        //    std::chrono::duration<double>(end_write - start_write).count());
            
-           printf("\n\n[Phase 2 Complete] Read + Compute Time: %f seconds.\n", 
-               std::chrono::duration<double>(end_read - start_read).count());
+        //    printf("\n\n[Phase 2 Complete] Read + Compute Time: %f seconds.\n", 
+        //        std::chrono::duration<double>(end_read - start_read).count());
 
 
         printf("\n\nTotal Complete: %f seconds\n",std::chrono::duration<double>(end_read - overall_start).count());

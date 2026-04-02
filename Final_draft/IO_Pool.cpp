@@ -65,18 +65,17 @@ void IO_Pool::worker_loop() {
                 req->buffer->resize(bytes); 
             } 
             else {
-                req->buffer->clear();//
-                //
+                req->buffer->clear();
                 std::cerr<<"Failed Read/Write\n";
             }
         }
         if (req->callback) {
             std::cerr<<"IO_POOL starting callback"<<std::endl;
-            auto user_callback=std::move(req->callback);//Critical
-            auto safe_buffer=req->buffer;
+            auto user_callback=std::move(req->callback);
+            auto safe_buffer=req->buffer;//Critical
             Compute_pool->submit([user_callback,safe_buffer](){
                 user_callback(safe_buffer);
-            });
+            },priority::HIGH);
             std::cerr<<"IO_POOL callback returned"<<std::endl;
         }
         delete req;
