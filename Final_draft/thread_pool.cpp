@@ -122,8 +122,10 @@ bool thread_pool::check_exceptions(int timeout_ms) {
         std::rethrow_exception(eptr);
 
         return true;
-    } else
+    } else{
+        pthread_mutex_unlock(&e_mutex);
         return false;
+    }
 }
 
 bool thread_pool::check_exceptions_nonblocking() {
